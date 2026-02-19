@@ -1,0 +1,16 @@
+---
+title: "Proj1"
+author: "ZIHAO YU"
+format: html
+editor: visual
+---
+
+# 1.How will I tackle the problem?
+
+I will first split the variables, extracting name, region, total score, and pre-tournament rating. I will process B/H/U matches separately and calculate the average afterward. The output will consist of 5 columns and be exported as a CSV file.
+
+# 2.What data challenges do I anticipate?
+
+The main challenges are the presence of mixed B/H/U records within the match data.
+
+source: "https://raw.githubusercontent.com/XxY-coder/data607-Proj.Y/refs/heads/main/tournamentinfo.txt"
