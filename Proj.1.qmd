@@ -14,3 +14,171 @@ I will first split the variables, extracting name, region, total score, and pre-
 The main challenges are the presence of mixed B/H/U records within the match data.
 
 source: "https://raw.githubusercontent.com/XxY-coder/data607-Proj.Y/refs/heads/main/tournamentinfo.txt"
+
+# 3.Data cleanup
+
+```{r}
+library(tidyverse)
+library(stringr)
+
+chess.raw <- readLines("https://raw.githubusercontent.com/XxY-coder/data607-Proj.Y/refs/heads/main/tournamentinfo.txt")
+
+head(chess.raw, 20)
+
+chess_df <- chess.raw[-(1:4)]
+chess_df <- chess_df[chess_df != ""]
+
+chess_df <- chess_df[!str_detect(chess_df, "^\\s*-+\\s*$")]
+
+head(chess_df, 20)
+```
+
+```{r}
+line_n <- which(str_detect(chess_df, "^\\s*\\d+\\s*\\|"))
+line_n
+
+line_odd <- chess_df[line_n]      
+line_even <- chess_df[line_n + 1]   
+
+head(line_odd,5)
+head(line_even,5)
+```
+# 4.Break it down into tables
+
+```{r}
+parse_line1 <-
+  function(x) {
+    parts <-
+      str_split(x, "\\|", simplify = TRUE) |> 
+      as.character()
+    parts <- str_trim(parts)
+    parts <- parts[parts != ""]
+    
+    tibble(
+      player_num   = as.integer(parts[1]),
+      name         = parts[2],
+      total_points = as.numeric(parts[3]),
+      
+      round1       = parts[4],
+      round2       = parts[5],
+      round3       = parts[6],
+      round4       = parts[7],
+      round5       = parts[8],
+      round6       = parts[9],
+      round7       = parts[10]
+  )
+}
+
+line1_df <- 
+  map_dfr(line_odd, parse_line1)
+
+line1_df |> 
+  select(player_num, name, total_points, round1:round7) |>
+  head()
+```
+
+Get the state and pre-rating.
+
+```{r}
+
+parse_line2 <- 
+  function(x) {
+    parts <- 
+      str_split(x, "\\|", simplify = TRUE) |>
+      as.character()
+    parts <- str_trim(parts)
+    parts <- parts[parts != ""]
+    state <- parts[1]
+  
+    pre <- str_match(x, "R:\\s*(\\d{3,4})")[, 2]
+  
+    if (is.na(pre)) pre <- 
+      str_match(x, "(\\d{3,4})\\s*->")[, 2]
+
+    tibble(
+      state = state,
+      pre_rating = as.integer(pre)
+      )
+}
+
+line2_df <- 
+  map_dfr(line_even, parse_line2)
+line2_df |> 
+  head()
+```
+
+```{r}
+
+nrow(line1_df)
+nrow(line2_df)
+
+players <- bind_cols(line1_df, line2_df)
+
+players |>
+  select(player_num, name, state, total_points, pre_rating) |>
+  head()
+```
+
+# 5. Dealing with the pre-rating.
+select the rounds and match the rating, then to find out the average rating.
+
+```{r}
+opp_info <-
+  players |>
+  select(player_num, starts_with("round")) |>
+  pivot_longer(
+    cols = starts_with("round"),
+    names_to = "round",
+    values_to = "cell"
+  ) |>
+  mutate(
+    cell = str_trim(cell),
+    opp_num = as.integer(str_extract(cell, "\\d+"))
+  )
+
+opp_info |>
+  filter(player_num == 1)
+```
+
+```{r}
+
+find_rating <- 
+  players |>
+  select(player_num, opp_pre = pre_rating)
+
+avg_rating <- 
+  opp_info |>
+  left_join(find_rating, by = c("opp_num" = "player_num")) |>
+  group_by(player_num) |>
+  summarise(
+    avg_opp_pre = mean(opp_pre, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    avg_opp_pre = ifelse(is.nan(avg_opp_pre), NA, avg_opp_pre)
+  )
+
+avg_rating |>
+  head(10)
+```
+
+# 6.Complete the table and export as csv.
+
+```{r}
+final_table <- 
+  players |>
+  left_join(avg_rating, by = "player_num") |>
+  transmute(
+    Name = name,
+    State = state,
+    TotalPoints = total_points,
+    PreRating = pre_rating,
+    AvgPreRating = as.integer(round(avg_opp_pre, 0))
+  )
+
+final_table |>
+  head(10)
+ 
+write.csv(final_table, "chess_players.csv", row.names = FALSE)
+```
+
